@@ -1,9 +1,11 @@
 #include <Python.h>
+#include <string.h>
 #include "wpsapi.h"
 #include "structmember.h"
 
 static PyObject *PyhookError;
-static WPS_SimpleAuthentication auth;
+static char authusername[1024];
+static char authrealm[1024];
 
 static char *
 get_error_string(WPS_ReturnCode rc) {
@@ -154,8 +156,8 @@ pyhook_BuildLocationValue(const WPS_Location *location) {
 static PyObject *
 pyhook_init(PyObject *self, PyObject *args, PyObject *keywords) {
   
-  char *realm = "ccsolution";
-  char *username = "david";
+  char *realm;
+  char *username;
   
   static char *kwlist[] = {"realm", "username", NULL};
   if (!PyArg_ParseTupleAndKeywords(args, 
@@ -165,11 +167,21 @@ pyhook_init(PyObject *self, PyObject *args, PyObject *keywords) {
 				   &realm, &username))
     return NULL;
 
-  auth.username = username;
-  auth.realm = realm;
-  
+  if(strlen(realm) > 1023 || strlen(username) > 1023) 
+    return NULL;
+  strncpy(authusername, username, strlen(username));
+  strncpy(authrealm, realm, strlen(realm));
+
   Py_INCREF(Py_None);
   return Py_None;
+}
+
+static WPS_SimpleAuthentication 
+get_wps_auth() {
+  WPS_SimpleAuthentication auth;
+  auth.username = authusername;
+  auth.realm = authrealm;
+  return auth;
 }
 
 static PyObject *
@@ -178,7 +190,9 @@ pyhook_iplocation(PyObject *self, PyObject *args) {
   WPS_ReturnCode rc;
   PyObject *retval;
   int addressLookupType = WPS_NO_STREET_ADDRESS_LOOKUP;
-  
+
+  WPS_SimpleAuthentication auth = get_wps_auth();
+
   if (!PyArg_ParseTuple(args, "|i", &addressLookupType))
     return NULL;
   
@@ -208,6 +222,7 @@ pyhook_location(PyObject *self, PyObject *args) {
   WPS_ReturnCode rc;
   PyObject *retval;
   int addressLookupType = WPS_NO_STREET_ADDRESS_LOOKUP;
+  WPS_SimpleAuthentication auth = get_wps_auth();
   
   if (!PyArg_ParseTuple(args, "|i", &addressLookupType))
     return NULL;
@@ -288,6 +303,7 @@ pyhook_periodicLocation(PyObject *self, PyObject *args) {
   unsigned long period;
   unsigned iterations;
   pyhook_PeriodicArg arg;
+  WPS_SimpleAuthentication auth = get_wps_auth();
   
   if(!PyArg_ParseTuple(args, "kIOO|i", &period, &iterations,
 		       &arg.callback, &arg.data, &addressLookupType))
